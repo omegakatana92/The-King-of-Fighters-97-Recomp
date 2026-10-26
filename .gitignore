@@ -1,0 +1,23 @@
+# Build outputs
+build*/
+generated/
+entries*.txt
+
+# ROM data: never commit.  Supply your own legally obtained dump.
+roms/
+roms-src/
+
+# Local test output (screenshots are SNK imagery; not distributed)
+shots/
+
+# Distribution artifacts
+dist/windows/*/
+dist/release-assets/
+*.AppImage
+*.zip
+
+# Editor / OS noise
+.vs/
+*.user
+*.suo
+Thumbs.db

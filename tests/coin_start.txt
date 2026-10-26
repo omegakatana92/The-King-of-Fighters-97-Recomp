@@ -1,0 +1,4 @@
+# Insert a credit, then start.  The BIOS eyecatcher ends near frame 600 and
+# the game's own attract loop follows; the coin is accepted at any time.
+900 coin
+1000 start

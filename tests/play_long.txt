@@ -1,0 +1,69 @@
+# Long scripted session for the profile pass: coin, start, the game's own
+# menus, then a series of matches with movement and all four attack buttons.
+# It is not a strategy; it exists to reach as much of the game's code as
+# possible.  Timings are for the Windows Release build.
+900 coin
+1000 start
+
+9000-9200 right
+9250 a
+9300 b
+9350 c
+9400 d
+9500-9700 left
+9750 a
+9800 b
+
+10200-10400 right
+10450 c
+10500 d
+10600-10800 left
+10850 a
+
+11200-11400 right
+11450 b
+11500 c
+11600-11800 left
+11850 d
+
+12200-12400 right
+12450 a
+12500 b
+12600-12800 left
+12850 c
+
+13200-13400 right
+13450 d
+13500 a
+13600-13800 left
+13850 b
+
+14200-14400 right
+14450 c
+14500 d
+14600-14800 left
+14850 a
+
+15200-15400 right
+15450 b
+15500 c
+15600-15800 left
+15850 d
+
+16200-16400 right
+16450 a
+16500 b
+16600-16800 left
+16850 c
+
+17200-17400 right
+17450 d
+17500 a
+17600-17800 left
+17850 b
+
+18200-18400 right
+18450 c
+18500 d
+18600-18800 left
+18850 a

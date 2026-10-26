@@ -1,0 +1,15 @@
+# Coin -> start -> auto-advance through HOW TO PLAY, CHARACTER SELECT,
+# MODE SELECT and ORDER SELECT -> match.  Then move and attack.
+# Timings are for the Windows Release build; see docs/testing.md.
+900 coin
+1000 start
+
+# P1 walks right, then runs through the four attack buttons.
+9600-9900 right
+10000 a
+10100 b
+10200 c
+10300 d
+
+# Walk back to the left.
+10400-10700 left

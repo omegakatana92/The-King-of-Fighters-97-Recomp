@@ -1,0 +1,1 @@
+# Attract mode: no input.  Used for the profile pass and screenshots.

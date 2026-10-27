@@ -64,15 +64,54 @@ scaled to a 4:3 rectangle centred in the output with black bars. It is never
 stretched to 16:10. F11 toggles the mode. This is what the Steam Deck AppRun
 passes by default.
 
-## Z80 bank window base and masks
+## M1 bank mask from the M1 file size (`src/audio.c`)
 
-`src/audio.c`.
+MAME's `init_audio()` builds each Z80 bank entry as
 
-MAME's `init_audio()` places banked M1 windows at `0x10000 + ...`, above the
-fixed 64 KB at the bottom of the M1, and masks the bank register to the ROM
-size. The old code used the raw bank value as an offset. The fix follows
-MAME; it matters for drivers that bank the upper part of a 128 KB M1, as
-KOF '97's does.
+```
+bank_address = 0x10000 + ((bank << (11 + window)) & address_mask);
+```
+
+in the audio region. `ROM_RELOAD` places the first byte of the M1 file at
+region offset `0x10000`, so the **file** offset is the masked value alone.
+`address_mask` comes from the region length (`M1 size + 0x10000`); for files
+up to 512 KB that is `(M1 size - 1) & 0x3FFFF`.
+
+The vendored code used `0x10000 + (bank & (size - 0x10000 - 1))`, which for a
+128 KB M1 rotates every bank by `+0x10000`. KOF '97 selects banks
+`0x08000`-`0x0F000` at character select; the runtime read
+`0x18000`-`0x1F000` instead, so the driver loaded the wrong music data and the
+BGM went silent while 68000-triggered ADPCM effects kept playing. The same
+failure appears in `--interp` because the audio path is shared.
+
+The fix uses the M1 file size, as MAME does:
+
+```c
+off = (bank & ((size - 1) & 0x3FFFF)) + (a & window_mask);
+```
+
+This is generic for 64 KB, 128 KB, 256 KB and 512 KB M1s.
+
+Evidence: `NG_AUDIO_TRACE=1` showed banks `0F000/0E000/0C000/08000` during
+the silent character-select section; a MAME 0.242 capture of the same
+coin/start sequence has music there (allowing for a ~5 s boot-time offset).
+After the fix the WAV is continuous from 83 s through the match.
+
+## Frame-boundary Z80 sync (`src/audio.c`)
+
+`audio_take_samples()` now calls `audio_sync()` before generating samples.
+The Z80 previously advanced only when the 68000 touched the sound latches, so
+a game that stopped polling could starve the sound CPU and its YM2610 timers.
+Syncing once per frame keeps the Z80 in step with `ng_cycles` regardless of
+68k polling. This is generic and does not alter the 68000 timeline.
+
+## Audio regression check (`tests/check_audio.py`, `audio-check`)
+
+The `audio-check` target runs a 12,000-frame coin/start session, writes
+`build-*/audio-check.wav`, and checks every 1 s window from 83 s to 200 s.
+Before the fix the 83-120 s character-select window was almost entirely
+silent; after it the minimum RMS is 1171.9 in that window and 107.1 across
+the match. The check is dependency-free (Python standard library only).
 
 ## Native instruction accounting
 

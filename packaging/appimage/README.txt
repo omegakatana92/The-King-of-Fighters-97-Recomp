@@ -2,8 +2,9 @@ The King of Fighters '97 - native static recompilation
 ======================================================
 
 This AppImage contains the recompiled game and the SDL2 window/audio layer.
-It does not contain game ROMs or the Neo Geo BIOS: supply your own legally
-obtained dump.
+This build (v0.1.1) fixes the M1 bank-mask bug that silenced the
+character-select background music.  It does not contain game ROMs or the Neo
+Geo BIOS: supply your own legally obtained dump.
 
 Quick start
 -----------
@@ -13,8 +14,9 @@ Quick start
      unzip kof97.zip -d roms
      unzip neogeo.zip -d roms
 
-   The AppRun script finds a "roms" directory next to the AppImage, or a
-   folder named by KOF97_ROM_DIR.
+   The AppRun script finds a "roms" directory next to the AppImage, a folder
+   named by KOF97_ROM_DIR, or the per-user folder
+   $HOME/.local/share/kof97/roms.
 
 2. Make the AppImage executable and run it:
 

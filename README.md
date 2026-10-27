@@ -26,8 +26,9 @@ oracle and as the fallback for any code the flat dispatch cannot identify
 
 ## Status
 
-**v0.1.0, alpha - boots, runs attract mode and reaches a playable match on
-100% recompiled code.**
+**v0.1.1, alpha - boots, runs attract mode and reaches a playable match on
+100% recompiled code. v0.1.1 fixes the M1 bank-mask bug that silenced the
+character-select background music.**
 
 | Area | State |
 |---|---|
@@ -36,9 +37,9 @@ oracle and as the fallback for any code the flat dispatch cannot identify
 | Input / credits | Coin, Start, directions, A/B/C/D exercised through the BIOS, menus and a match |
 | Gameplay | Team match reached and controlled: walking, all four attack buttons, KO and the next team member entering; CPU opponent fights back |
 | Graphics | Sprites, backgrounds, palettes, fixed layer, raster effects |
-| Audio | Z80 driver and YM2610 produce signal (3000-frame WAV: peak 11615, RMS 744, 51 of 202 half-second windows active); subjective mix not auditioned |
-| Native coverage | **100.00%** of a 19,000-frame scripted session and **100.00%** of a 6,000-frame no-input attract session, after one profile pass; 0 uncovered entry points |
-| `--verify` | 6,360,574 blocks over 8,000 frames, **0 mismatches**; Linux build 1,214,984 blocks over 2,000 frames, 0 mismatches |
+| Audio | Continuous BGM through character select and the match after the v0.1.1 M1 bank-mask fix; 19,000-frame capture peak 24752, every 1 s window 83-200 s above 100 RMS; character-select button presses add voice/SFX transients; not subjectively auditioned |
+| Native coverage | **100.00%** on the 12,000-frame audio-check and 6,000-frame verify sessions (0 interpreted, 0 uncovered); 42,461 dispatch entries after the profile pass |
+| `--verify` | 4,775,936 blocks over 6,000 frames, **0 mismatches**; AppImage 1,215,070 blocks over 2,000 frames, 0 mismatches |
 | Toolkit tests | 68000 conformance 59/60 (reference 59/60); SDL virtual-gamepad test passes on Windows (P1/P2, D-pad/stick, A/B/C/D, Start, Back-as-coin) |
 | Windows | Release exe built with MSVC 19.51 (VS 18 2026) x64 + SDL2 2.32.10; headless and windowed launches tested |
 | Steam Deck | AppImage built and launched under WSL2 Ubuntu 22.04; **not tested on physical Deck hardware** |
@@ -193,29 +194,36 @@ handling is verified.
 # collect runtime-only entry points, rebuild, and re-measure
 cmake --build build-windows --config Release --target profile
 cmake --build build-windows --config Release --target kof97
+
+# audio continuity regression (Linux/Steam Deck build)
+cmake --build build-linux --target audio-check
 ```
 
-Measured results on the Windows Release build (full logs in
+Measured results on the Linux/Steam Deck Release build (full logs in
 `docs/testing.md`):
 
 ```
-[tests/play_long.txt, 19000 frames, after one profile pass]
-[exec] native blocks 14297904, native instructions 354940783,
+[tests/play_long.txt, 19000 frames]
+[exec] native blocks 14510162, native instructions 354889002,
+       interpreted instructions 114 (100.00% native), 7 uncovered entry points
+
+[tests/audio_select.txt, 12000 frames]
+[exec] native blocks 9486483, native instructions 224333873,
        interpreted instructions 0 (100.00% native), 0 uncovered entry points
 
-[empty input, 6000 frames, after one profile pass]
-[exec] native blocks 3232858, native instructions 113175391,
-       interpreted instructions 0 (100.00% native), 0 uncovered entry points
-
-[--verify, tests/coin_start.txt, 8000 frames]
-[verify] 6360574 blocks checked, 0 mismatches
+[--verify, tests/play_long.txt, 6000 frames]
+[verify] 4775936 blocks checked, 0 mismatches
 ```
 
+The 7 interpreted entry points in the long run are RTC-seeded AI paths that
+vary between runs; they run correctly in Musashi. The audio-check and verify
+sessions run entirely natively.
+
 The recompiler translates **1,342,074 instructions into 41,859 dispatch
-entries** from static discovery alone. One profile pass (6,000-frame attract
-plus 19,000-frame scripted play) adds 431 runtime-only entry points and brings
-both sessions to 0 interpreted instructions; the final table has **42,339
-entries** and **1,356,028 instructions**.
+entries** from static discovery alone. The profile pass (6,000-frame attract,
+19,000-frame play, 12,000-frame character-select inputs) adds 551 runtime-only
+entries; the final table has **42,461 entries** and **1,358,361
+instructions**.
 
 ### Interpreter comparison
 
@@ -233,10 +241,41 @@ native block against Musashi with 0 mismatches.
 The Z80 runs the real M1 driver with NMI/reply latches and ROM banking. The
 YM2610's FM, SSG and ADPCM-A/B are synthesized by
 [ymfm](https://github.com/aaronsgiles/ymfm), clocked by the Z80, and played
-through SDL2 or written with `--wav`. A 3,000-frame coin/start session
-produces a 2-channel, 55,555 Hz WAV with peak 11615 and RMS 744, so the path
-is alive. The mix has not been listened to critically; treat subjective
-quality as unverified.
+through SDL2 or written with `--wav`.
+
+### v0.1.1 audio repair
+
+The background music stopped at character select because the runtime's Z80
+bank window added `0x10000` to every M1 bank offset. KOF '97 selects banks
+`0x08000`-`0x0F000` there; the runtime read `0x18000`-`0x1F000`, so the
+driver loaded the wrong music data. The fix derives the mask from the M1 file
+size, exactly as MAME's `init_audio()` does:
+
+```c
+off = (bank & ((size - 1) & 0x3FFFF)) + (a & window_mask);
+```
+
+`audio_take_samples()` also now calls `audio_sync()` once per frame so the
+Z80 and YM2610 timers keep running even when the 68000 stops polling the
+sound latches. Both fixes are generic and are shared by the interpreter and
+recompiled paths.
+
+Measured after the fix:
+
+- 12,000-frame capture: every 1 s window from 83 s to 200 s is above
+  100 RMS; the character-select window (83-120 s) has minimum RMS 1171.9.
+- 19,000-frame capture: BGM continues through character select, mode select,
+  order select and the match; the 280-290 s gap is the CONTINUE countdown,
+  and the ranking music resumes afterwards.
+- `--interp` produces the same continuous character-select audio.
+- MAME 0.242, same coin/start sequence: the title/character-select audio
+  pattern matches after allowing for a ~5 s boot-time offset.
+- Character-select button presses add voice/SFX transients above the BGM
+  (5 windows above 5112 RMS vs none in the no-input run).
+- `audio-check` (`tests/check_audio.py`) guards the regression.
+
+The mix has not been listened to critically; subjective quality remains
+unverified.
 
 ## Known limitations
 
@@ -269,6 +308,8 @@ src/recomp_main.c           generator (ng_recomp_main)
 tests/coin_start.txt        credit/start script
 tests/play.txt              match script (movement and attacks)
 tests/play_long.txt         19,000-frame profile script
+tests/audio_select.txt      character-select inputs for voice/SFX checks
+tests/check_audio.py        audio continuity regression (`audio-check`)
 packaging/appimage/         AppImage build script, desktop file, icon, README
 packaging/windows/          Windows package README, ROM helper, SDL2 notice
 scripts/build-linux.sh      Linux configure/build helper
@@ -281,6 +322,7 @@ neogeorecomp/               toolkit copy (MIT), with generic fixes
 
 * `docs/compatibility.md` - hardware and platform compatibility report.
 * `docs/testing.md` - commands and measured results.
+* `docs/audio-fix.md` - v0.1.1 M1 bank-mask diagnosis and audio evidence.
 * `docs/game-notes.md` - ROM set, banking, boot sequence.
 * `docs/runtime-changes.md` - generic changes in the vendored toolkit.
 

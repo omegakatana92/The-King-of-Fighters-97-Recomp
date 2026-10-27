@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.21)
-project(kof97 VERSION 0.1.0 LANGUAGES C CXX)
+project(kof97 VERSION 0.1.1 LANGUAGES C CXX)
 
 set(CMAKE_C_STANDARD 11)
 set(CMAKE_C_STANDARD_REQUIRED ON)
@@ -13,6 +13,8 @@ else()
 endif()
 set(NEOGEORECOMP_DIR ${ng_default} CACHE PATH "neogeorecomp checkout")
 add_subdirectory(${NEOGEORECOMP_DIR} neogeorecomp_build)
+
+find_package(Python3 COMPONENTS Interpreter QUIET)
 
 # Your unzipped MAME "kof97" set and "neogeo" system ROMs.  The build reads
 # them where they are; nothing derived from them is committed.
@@ -69,8 +71,21 @@ if(KOF97_ROM_DIR)
         COMMAND kof97 --headless --rom-path ${KOF97_ROM_DIR} --frames 19000
                 --input ${CMAKE_CURRENT_SOURCE_DIR}/tests/play_long.txt
                 --dump-misses ${KOF97_ENTRIES}
+        COMMAND kof97 --headless --rom-path ${KOF97_ROM_DIR} --frames 12000
+                --input ${CMAKE_CURRENT_SOURCE_DIR}/tests/audio_select.txt
+                --dump-misses ${KOF97_ENTRIES}
         DEPENDS kof97
         COMMENT "Profiling scripted sessions for runtime-only entry points")
+    if(Python3_Interpreter_FOUND)
+        add_custom_target(audio-check
+            COMMAND kof97 --headless --rom-path ${KOF97_ROM_DIR} --frames 12001
+                    --input ${CMAKE_CURRENT_SOURCE_DIR}/tests/play_long.txt
+                    --wav ${CMAKE_BINARY_DIR}/audio-check.wav
+            COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/tests/check_audio.py
+                    ${CMAKE_BINARY_DIR}/audio-check.wav
+            DEPENDS kof97
+            COMMENT "Checking KOF '97 audio through character select and the match")
+    endif()
     target_compile_definitions(kof97 PRIVATE KOF97_HAVE_RECOMP)
     if(MSVC)
         # Generated routines are large; /bigobj lifts the section limit.

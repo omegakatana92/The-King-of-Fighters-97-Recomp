@@ -1,0 +1,25 @@
+# Character-select inputs and a short match, for the voice/SFX check.
+# Coin/start as usual, then press all four buttons and move the cursor during
+# character select, confirm the mode, and attack in the match.
+900 coin
+1000 start
+
+5000 a
+5100 b
+5200 c
+5300 d
+5400 right
+5500 a
+5600 left
+5700 a
+
+6000 a
+6100 a
+
+9000-9200 right
+9250 a
+9300 b
+9350 c
+9400 d
+9500-9700 left
+9750 a

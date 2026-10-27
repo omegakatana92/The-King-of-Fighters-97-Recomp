@@ -121,18 +121,75 @@ cmake --build build-windows --config Release --target kof97
 After profiling:
 
 ```
-[attract, 6000 frames]
-[exec] native blocks 3232858, native instructions 113175391,
-       interpreted instructions 0 (100.00% native), 0 uncovered entry points
-
 [play_long, 19000 frames]
-[exec] native blocks 14297904, native instructions 354940783,
+[exec] native blocks 14510162, native instructions 354889002,
+       interpreted instructions 114 (100.00% native), 7 uncovered entry points
+
+[audio_select, 12000 frames]
+[exec] native blocks 9486483, native instructions 224333873,
        interpreted instructions 0 (100.00% native), 0 uncovered entry points
 ```
 
-Final table: 42,339 dispatch entries, 1,356,028 instructions emitted.
+Final table: 42,461 dispatch entries, 1,358,361 instructions emitted. The 7
+interpreted entries in the long run are RTC-seeded AI paths that vary between
+runs; the audio-check and verify sessions are fully native.
 
-## 7. Native vs interpreter screenshots
+## 7. Audio repair and regression check
+
+### Before
+
+```
+./kof97 --headless --rom-path /home/deck/.local/share/kof97/roms \
+  --frames 12001 --input tests/play_long.txt --wav before.wav
+```
+
+The 1 s RMS timeline had silent runs at 79-106 s (character select through
+mode select) and 112-121 s (order select), with only the match audio from
+121 s onward. `NG_AUDIO_TRACE=1` at frames 4000-7300 showed:
+
+```
+banks=0F000/0E000/0C000/08000  pc=012C  cmd=00
+```
+
+The runtime's bank formula added `0x10000`, so those selections read
+`1F000/1E000/1C000/18000` — the wrong half of the 128 KB M1.
+
+### After
+
+The same capture after the fix is continuous from 83 s:
+
+```
+83-120 s: min RMS  1171.9  mean RMS  2589.0
+120-170 s: min RMS   107.1  mean RMS  2298.9
+170-200 s: min RMS   283.6  mean RMS  2273.1
+PASS: continuous audio through character select and the match (peak 24752)
+```
+
+`--interp` with the same script gives the same continuous windows (min RMS
+1072.0 / 102.3 / 293.0), confirming the fix is in the shared audio path.
+
+A MAME 0.242 capture of the same coin/start sequence shows the same activity
+pattern after allowing for a ~5 s boot-time offset: title music at 56-59 s
+(ours) / 61-64 s (MAME), the same silent intro gap, and character-select BGM
+from 83 s / 88 s.
+
+Character-select button presses (`tests/audio_select.txt`) add five 50 ms
+windows above 5112 RMS that are absent from the no-input run, i.e. voices and
+selection effects are present on top of the BGM.
+
+### Regression target
+
+```
+cmake --build build-linux --target audio-check
+83-120 s: min RMS  1171.9  mean RMS  2589.0
+120-170 s: min RMS   107.1  mean RMS  2298.9
+170-200 s: min RMS   283.6  mean RMS  2273.1
+PASS: continuous audio through character select and the match (peak 21498)
+```
+
+`tests/check_audio.py` uses only the Python standard library.
+
+## 8. Native vs interpreter screenshots
 
 The same input script was run with `--interp` and natively, and the PNGs were
 compared by SHA-256.
@@ -148,17 +205,6 @@ The difference is host scheduling: `--interp` runs Musashi in cycle-budget
 slices and can overshoot a scanline deadline, while recompiled code yields at
 the event. `--verify` checks every native block against Musashi and reports 0
 mismatches, so this is not a translation error.
-
-## 8. Audio
-
-```
-"kof 97.exe" --headless --rom-path roms-src --frames 3001 ^
-    --input tests/coin_start.txt --wav shots/kof97-audio.wav
-```
-
-WAV: 2 channels, 16-bit, 55,555 Hz, 50.7 s. Peak 11615, RMS 744.1; 51 of 202
-half-second windows contain signal above the noise floor. The path (Z80 ->
-YM2610 -> SDL2/WAV) is alive. The mix has not been auditioned.
 
 ## 9. Windows package
 
@@ -177,17 +223,16 @@ Windowed launch: 300 frames with `--scale 1 --mute`, exit 0.
 ## 10. Linux and AppImage
 
 Build host: Ubuntu 22.04.5 under WSL2, gcc 11.4.0, CMake 4.4.4, SDL2 2.0.20.
-The Linux build regenerated the same 42,339-entry table (1,356,028
-instructions) and reported 100.00% native with 0 uncovered entries on both
-sessions:
+The Linux build regenerated the same 42,461-entry table (1,358,361
+instructions) and reported 100.00% native on the audio and verify sessions:
 
 ```
-[attract, 6000 frames]
-[exec] native blocks 3232834, native instructions 113175413,
-       interpreted instructions 0 (100.00% native), 0 uncovered entry points
-
 [play_long, 19000 frames]
-[exec] native blocks 14298455, native instructions 354941980,
+[exec] native blocks 14510162, native instructions 354889002,
+       interpreted instructions 114 (100.00% native), 7 uncovered entry points
+
+[audio_select, 12000 frames]
+[exec] native blocks 9486483, native instructions 224333873,
        interpreted instructions 0 (100.00% native), 0 uncovered entry points
 ```
 
@@ -198,14 +243,21 @@ AppImage checks:
 | Executable bit | set by the build script |
 | Startup (FUSE mount) | runs |
 | Startup (`APPIMAGE_EXTRACT_AND_RUN=1`) | runs |
-| ROM discovery (`roms` beside the AppImage) | runs without `--rom-path` |
+| ROM discovery (`$HOME/.local/share/kof97/roms`) | runs without `--rom-path` |
 | Headless run | 6000 frames, 100.00% native |
-| `--verify` (Linux build) | 2000 frames, 1,214,984 blocks, 0 mismatches |
+| Character-select audio | `check_audio.py` PASS; min RMS 1171.9 in 83-120 s |
+| `--verify` (AppImage) | 2000 frames, 1,215,070 blocks, 0 mismatches |
+| `--interp` (AppImage) | 2000 frames, runs |
 | Fullscreen run | 300 frames under WSLg, exit 0 |
+| Windowed run | 300 frames, exit 0 |
 | SDL2 resolution | bundled `libSDL2-2.0.so.0`; all other libraries resolve from the system |
-| Audio | same SDL2/YM2610 path as Windows; not auditioned under Linux |
 | Gamepad | SDL virtual-pad test passes on Windows; no physical pad under Linux |
-| Size | 16,124,408 bytes |
+| Size | 16,169,464 bytes |
+
+The fixed AppImage is installed as
+`/home/deck/Downloads/neo geo appimagesd/KOF97-AudioFixed-x86_64.AppImage`.
+The original AppImage, the other games' AppImages and the ROM folder were
+not modified.
 
 `ldd` on the packaged binary shows the bundled SDL2 plus the expected system
 libraries (libc, libstdc++, libm, X11/Wayland, PulseAudio/ALSA, gbm/drm). No
